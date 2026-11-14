@@ -1,0 +1,313 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAYANK REAL CRICKET</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#071629;color:white;font-family:Arial;overflow:hidden}
+canvas{display:block;width:100vw;height:100vh}
+#menu{position:fixed;inset:0;background:linear-gradient(#071629dd,#071629f5);display:flex;align-items:center;justify-content:center;z-index:5;text-align:center;padding:15px}
+.card{background:#142b40;border:1px solid #49647c;border-radius:18px;padding:22px;width:min(440px,95vw)}
+h1{color:#ffd34e;margin:5px}
+button,input{padding:12px;border:0;border-radius:9px;margin:5px;font-weight:bold}
+button{background:#ffca35;color:#171717;cursor:pointer}
+input{width:90%;max-width:270px}
+#hud{position:fixed;inset:0;pointer-events:none}
+.panel{background:#06182bdc;padding:10px;border-radius:10px;margin:9px;display:inline-block}
+#score{font-size:23px;color:#ffe16b;font-weight:bold}
+#players{position:absolute;top:85px;left:8px;font-size:12px;line-height:1.7}
+#message{position:absolute;top:48%;width:100%;text-align:center;font-size:22px;font-weight:bold;text-shadow:0 2px 5px black}
+#controls{position:absolute;bottom:12px;left:0;right:0;text-align:center;pointer-events:auto}
+#controls button{min-width:90px}
+#room{font-size:18px;color:#ffe16b}
+#net{font-size:12px;color:#9ef5bd}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="menu">
+ <div class="card">
+  <h1>🏏 MAYANK CRICKET</h1>
+  <p>REAL CRICKET STADIUM</p>
+  <button onclick="offline()">OFFLINE FRIENDS</button>
+  <hr>
+  <button onclick="createRoom()">CREATE ONLINE ROOM</button>
+  <p id="room"></p>
+  <input id="joinid" placeholder="Enter friend's Room ID">
+  <br><button onclick="joinRoom()">JOIN ONLINE ROOM</button>
+  <p id="net">Choose a game mode</p>
+  <p style="font-size:12px;color:#b9c9d8">Online mode needs an internet connection.</p>
+ </div>
+</div>
+
+<div id="hud">
+ <div class="panel">
+  <b>MAYANK PREMIER LEAGUE</b><br>
+  <span id="score">0 / 0</span><br>
+  <small id="overs">Overs: 0.0</small>
+ </div>
+ <div class="panel" style="position:absolute;right:0;top:0">
+  <span id="mode">NOT CONNECTED</span><br>
+  <small id="turn">Choose mode</small>
+ </div>
+ <div class="panel" id="players">
+  <b>TEAM PLAYERS</b><br>
+  👑 MAYANK KING<br>DEV<br>ROHIT<br>RAJ<br>
+  PLAYER 5<br>PLAYER 6<br>PLAYER 7<br>PLAYER 8<br>
+  PLAYER 9<br>PLAYER 10<br>PLAYER 11
+ </div>
+ <div id="message">WELCOME TO MAYANK CRICKET</div>
+ <div id="controls">
+  <button onclick="bowl()">🎯 BOWL</button>
+  <button onclick="hit()">🏏 HIT</button>
+  <button onclick="resetMatch()">RESET</button>
+ </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+const canvas=document.getElementById("c");
+const ctx=canvas.getContext("2d");
+let W=0,H=0;
+function resize(){
+ W=canvas.width=innerWidth*devicePixelRatio;
+ H=canvas.height=innerHeight*devicePixelRatio;
+}
+addEventListener("resize",resize);resize();
+
+const names=["MAYANK KING","DEV","ROHIT","RAJ","PLAYER 5","PLAYER 6","PLAYER 7","PLAYER 8","PLAYER 9","PLAYER 10","PLAYER 11"];
+
+let game={
+ score:0,wickets:0,balls:0,
+ batter:"MAYANK KING",bowler:"DEV",
+ ball:false,ballX:0,ballY:0,
+ message:"WELCOME TO MAYANK CRICKET",
+ turn:"bowl",lastRuns:0
+};
+
+let mode="offline",isHost=true,peer=null,conn=null;
+let myName="MAYANK KING",friendName="DEV";
+let started=false,animation=0,localTurn=0;
+
+function say(t){
+ game.message=t;
+ document.getElementById("message").textContent=t;
+}
+function scoreUI(){
+ document.getElementById("score").textContent=game.score+" / "+game.wickets;
+ document.getElementById("overs").textContent=
+ "Overs: "+Math.floor(game.balls/6)+"."+(game.balls%6);
+}
+function showMode(t){
+ document.getElementById("mode").textContent=t;
+}
+function sendState(){
+ if(conn&&conn.open)conn.send({type:"state",game:game});
+}
+function updateAll(){
+ scoreUI();say(game.message);
+ document.getElementById("turn").textContent=
+ game.turn==="bowl"?"Bowler's turn":"Batter's turn";
+}
+function offline(){
+ mode="offline";isHost=true;started=true;
+ game={score:0,wickets:0,balls:0,batter:"MAYANK KING",
+ bowler:"DEV",ball:false,ballX:0,ballY:0,
+ message:"OFFLINE MATCH STARTED",turn:"bowl",lastRuns:0};
+ document.getElementById("menu").style.display="none";
+ showMode("OFFLINE MODE");
+ say("MAYANK KING vs DEV - MATCH STARTED");
+ updateAll();
+}
+function createRoom(){
+ if(!window.Peer){
+  document.getElementById("net").textContent="PeerJS load nahi hua. Internet check karo.";
+  return;
+ }
+ if(peer)peer.destroy();
+ isHost=true;mode="online";
+ document.getElementById("net").textContent="Creating room...";
+ peer=new Peer();
+ peer.on("open",id=>{
+  document.getElementById("room").textContent="ROOM ID: "+id;
+  document.getElementById("net").textContent="Room ready! Friend ko ID bhejo.";
+  showMode("ONLINE HOST");
+ });
+ peer.on("connection",c=>{
+  conn=c;
+  setupConnection();
+ });
+ peer.on("error",e=>{
+  document.getElementById("net").textContent="Connection error: "+e.type;
+ });
+}
+function joinRoom(){
+ if(!window.Peer){
+  document.getElementById("net").textContent="PeerJS load nahi hua. Internet check karo.";
+  return;
+ }
+ const id=document.getElementById("joinid").value.trim();
+ if(!id){alert("Friend ka Room ID likho");return}
+ if(peer)peer.destroy();
+ mode="online";isHost=false;
+ peer=new Peer();
+ peer.on("open",()=>{
+  conn=peer.connect(id);
+  conn.on("open",setupConnection);
+ });
+ peer.on("error",e=>{
+  document.getElementById("net").textContent="Connection error: "+e.type;
+ });
+}
+function setupConnection(){
+ conn.on("data",data=>{
+  if(data.type==="action"&&isHost){
+   if(data.action==="bowl")doBowl();
+   if(data.action==="hit")doHit();
+   if(data.action==="reset")doReset();
+  }
+  if(data.type==="state"&&!isHost){
+   game=data.game;updateAll();
+  }
+ });
+ started=true;
+ if(isHost){
+  game={score:0,wickets:0,balls:0,batter:"MAYANK KING",
+  bowler:"DEV",ball:false,ballX:0,ballY:0,
+  message:"FRIEND CONNECTED!",turn:"bowl",lastRuns:0};
+  sendState();
+ }else{
+  conn.send({type:"hello"});
+ }
+ document.getElementById("menu").style.display="none";
+ showMode(isHost?"ONLINE HOST":"ONLINE GUEST");
+ document.getElementById("net").textContent="Connected!";
+ say("FRIEND CONNECTED! MATCH START");
+ updateAll();
+}
+function action(a){
+ if(!started)return;
+ if(mode==="online"&&!isHost){
+  if(conn&&conn.open)conn.send({type:"action",action:a});
+  else say("Friend se connection nahi hai");
+  return;
+ }
+ if(a==="bowl")doBowl();
+ if(a==="hit")doHit();
+ if(a==="reset")doReset();
+}
+function doBowl(){
+ if(game.ball||game.turn!=="bowl")return;
+ game.ball=true;game.ballX=0;game.ballY=0;
+ game.turn="hit";game.message="BOWLER DELIVERS!";
+ say(game.message);updateAll();sendState();
+}
+function doHit(){
+ if(game.turn!=="hit"||!game.ball){
+  say("Pehle BOWL button dabao!");
+  return;
+ }
+ const runs=[0,1,2,4,6][Math.floor(Math.random()*5)];
+ game.score+=runs;
+ game.balls++;
+ game.ball=false;
+ game.turn="bowl";
+ game.lastRuns=runs;
+ game.message=runs===6?"SIX! 🚀":runs===4?"FOUR! 🔥":runs===0?"DOT BALL!":runs+" RUNS!";
+ if(game.balls%6===0)game.message+=" OVER COMPLETE!";
+ say(game.message);updateAll();sendState();
+}
+function doReset(){
+ game.score=0;game.wickets=0;game.balls=0;
+ game.ball=false;game.turn="bowl";
+ game.message="NEW MATCH STARTED!";
+ say(game.message);updateAll();sendState();
+}
+function bowl(){action("bowl")}
+function hit(){action("hit")}
+function resetMatch(){action("reset")}
+
+function ellipse(x,y,rx,ry,color){
+ ctx.fillStyle=color;ctx.beginPath();ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2);ctx.fill();
+}
+function drawPlayer(x,y,name,color,scale=1){
+ ctx.save();ctx.translate(x,y);ctx.scale(scale,scale);
+ ellipse(0,0,13,5,"#132d20");
+ ctx.fillStyle=color;ctx.fillRect(-9,-33,18,27);
+ ellipse(0,-39,9,9,"#b9825c");
+ ctx.strokeStyle="#e9e9e9";ctx.lineWidth=5;
+ ctx.beginPath();ctx.moveTo(-5,-7);ctx.lineTo(-8,0);
+ ctx.moveTo(5,-7);ctx.lineTo(8,0);ctx.stroke();
+ ctx.fillStyle="white";ctx.font="bold 9px Arial";ctx.textAlign="center";
+ ctx.fillText(name,0,-49);
+ ctx.restore();
+}
+function draw(){
+ animation++;
+ const sx=W/1000,sy=H/650;
+ ctx.setTransform(sx,0,0,sy,0,0);
+ let w=1000,h=650;
+ const sky=ctx.createLinearGradient(0,0,0,350);
+ sky.addColorStop(0,"#4d9ec9");sky.addColorStop(1,"#b5d9e9");
+ ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+ // stadium stands
+ for(let i=0;i<5;i++){
+  ctx.fillStyle=["#354c69","#53637b","#a33e3e","#354c69","#d0a83d"][i];
+  ctx.fillRect(0,175+i*18,w,18);
+  for(let x=8;x<w;x+=18){
+   ctx.fillStyle=i%2?"#f0c5a0":"#e8e8e8";
+   ctx.fillRect(x,177+i*18,7,8);
+  }
+ }
+ // field
+ ellipse(500,440,445,190,"#26743b");
+ ellipse(500,440,390,160,"#318b43");
+ ctx.strokeStyle="#d9f3d8";ctx.lineWidth=3;
+ ctx.beginPath();ctx.ellipse(500,440,410,170,0,0,Math.PI*2);ctx.stroke();
+ // pitch
+ ctx.fillStyle="#b79c70";
+ ctx.beginPath();ctx.moveTo(450,310);ctx.lineTo(550,310);
+ ctx.lineTo(575,575);ctx.lineTo(425,575);ctx.closePath();ctx.fill();
+ ctx.strokeStyle="white";ctx.lineWidth=3;
+ ctx.strokeRect(453,330,94,220);
+ // stumps
+ for(let y of [355,535]){
+  for(let x of [490,500,510]){
+   ctx.fillStyle="white";ctx.fillRect(x,y,3,22);
+  }
+ }
+ // players
+ const positions=[
+ [500,570,"MAYANK KING","#f4bf24",1.15],
+ [500,300,"DEV","#174cb0",1],
+ [300,390,"ROHIT","#174cb0",.9],
+ [700,390,"RAJ","#174cb0",.9],
+ [230,470,"PLAYER 5","#174cb0",.85],
+ [770,470,"PLAYER 6","#174cb0",.85],
+ [350,330,"PLAYER 7","#174cb0",.85],
+ [650,330,"PLAYER 8","#174cb0",.85],
+ [170,550,"PLAYER 9","#174cb0",.85],
+ [830,550,"PLAYER 10","#174cb0",.85],
+ [500,235,"PLAYER 11","#174cb0",.85]
+ ];
+ positions.forEach(p=>drawPlayer(...p));
+ // ball animation
+ if(game.ball){
+  const bx=500+Math.sin(animation*.1)*25;
+  const by=405+Math.sin(animation*.13)*20;
+  ellipse(bx,by,7,7,"#e52c37");
+ }
+ ctx.fillStyle="white";ctx.font="bold 24px Arial";ctx.textAlign="center";
+ ctx.fillText("MAYANK CRICKET STADIUM",500,55);
+ ctx.font="bold 14px Arial";ctx.fillText("FRIENDS CRICKET LEAGUE",500,80);
+ requestAnimationFrame(draw);
+}
+draw();
+updateAll();
+</script>
+</body>
+</html>
